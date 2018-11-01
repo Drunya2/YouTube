@@ -32,14 +32,13 @@ public class Requests {
         return string;
     }
 
-
     public static ObservableList<Channel> ShowGlobalInfo(String query) throws UnirestException, ParseException {
         ResponseGlobalInfo globalInfo = ShowInfo.getInfo(query);
         String simpleError = "{\"items\":[]}";                      // Если инфо по запросу нет, выходит такая строка
         String jsonInfo = JSON.toJSONString(globalInfo);
-            Platform.runLater(() -> {
-                if (simpleError.length() == jsonInfo.length()) AlertBox.display("Убедитеть в правильности запроса!");
-            });
+        Platform.runLater(() -> {
+            if (simpleError.length() == jsonInfo.length()) AlertBox.display("Убедитеть в правильности запроса!");
+        });
         ObservableList<Channel> userData = FXCollections.observableArrayList();
         for (int i = 0; i < globalInfo.items.length; i++) {
             String name = globalInfo.items[i].snippet.title;
@@ -57,40 +56,44 @@ public class Requests {
     public static ObservableList<CommentsChannel> showComments(String query) throws UnirestException, ParseException {
         ObservableList<CommentsChannel> userData = FXCollections.observableArrayList();
         Collections.synchronizedList(userData);
-        ResponseGlobalInfo globalInfo = null;
         try {
-            globalInfo = ShowInfo.getInfo(query);
+            ResponseGlobalInfo globalInfo = ShowInfo.getInfo(query);
+            String name = "";
+            String date = "";
+            long subscriberCount = 0;
+            int videoCount = 0;
+            long viewCount = 0;
+            for (int i = 0; i < globalInfo.items.length; i++) {
+                name = globalInfo.items[i].snippet.title;
+                String publishedDate = globalInfo.items[i].snippet.publishedAt;
+                date = (getDate(publishedDate));
+                subscriberCount = Long.parseLong(globalInfo.items[i].statistics.subscriberCount);
+                videoCount = Integer.parseInt(globalInfo.items[i].statistics.videoCount);
+                viewCount = Long.parseLong(globalInfo.items[i].statistics.viewCount);
+            }
+            ArrayList<String> channelIds = getChannelsIds(globalInfo);
+            ArrayList<Long> comments = getComments(channelIds);
+            long commentsCount = getAllComments(comments);
+            userData.add(new CommentsChannel(name, date, subscriberCount, videoCount, viewCount, commentsCount));
         } catch (UnirestException e) {
             e.printStackTrace();
         }
-        String name = "";
-        String date = "";
-        long subscriberCount = 0;
-        int videoCount = 0;
-        long viewCount = 0;
-        for (int i = 0; i < globalInfo.items.length; i++) {
-            name = globalInfo.items[i].snippet.title;
-            String publishedDate = globalInfo.items[i].snippet.publishedAt;
-            date = (getDate(publishedDate));
-            subscriberCount = Long.parseLong(globalInfo.items[i].statistics.subscriberCount);
-            videoCount = Integer.parseInt(globalInfo.items[i].statistics.videoCount);
-            viewCount = Long.parseLong(globalInfo.items[i].statistics.viewCount);
-        }
+        return userData;
+    }
 
-        ArrayList<String> arrayList = new ArrayList<>();
-        Collections.synchronizedList(arrayList);
+    private static ArrayList<String> getChannelsIds(ResponseGlobalInfo globalInfo){
+        ArrayList<String> channelIds = new ArrayList<>();
+        Collections.synchronizedList(channelIds);
         String playlistId = new String();
         for (int i = 0; i < globalInfo.items.length; i++) {
             playlistId = globalInfo.items[i].contentDetails.relatedPlaylists.uploads;
         }
         String page = "";
         while (page != null) {
-            String id = playlistId;
-            ResponseComment comment = null;
             try {
-                comment = ShowCommentCount.getInfo(playlistId, page);
+                ResponseComment comment = ShowCommentCount.getInfo(playlistId, page);
                 for (int i = 0; i < comment.items.length; i++) {
-                    arrayList.add(comment.items[i].contentDetails.videoId);
+                    channelIds.add(comment.items[i].contentDetails.videoId);
                     for (int j = 0; j < comment.items.length; j++) {
                         page = comment.nextPageToken;
                     }
@@ -99,26 +102,19 @@ public class Requests {
                 e.printStackTrace();
             }
         }
-        ArrayList<Long> comments = getComments(arrayList);
-        long commentsCount = 0;
-        for (int i = 0; i < comments.size(); i++) {
-            commentsCount += comments.get(i);
-        }
-        userData.add(new CommentsChannel(name, date, subscriberCount, videoCount, viewCount, commentsCount));
-        return userData;
+        return channelIds;
     }
 
-    public static ArrayList<Long> getComments(ArrayList<String> arrayList) {
+    private static ArrayList<Long> getComments(ArrayList<String> arrayList) {
         ArrayList<Long> comments = new ArrayList<>();
+        Collections.synchronizedList(comments);
         for (int k = 0; k < arrayList.size(); k++) {
-            ResponseVideo video = null;
             try {
-                video = ShowVideo.getInfo(arrayList.get(k));
+                ResponseVideo video = ShowVideo.getInfo(arrayList.get(k));
                 for (int i = 0; i < video.items.length; i++) {
                     int index = i;
-                    ResponseVideo video1 = video;
                     Main.service.submit(() -> {
-                        comments.add(Long.parseLong(video1.items[index].statistics.commentCount));
+                        comments.add(Long.parseLong(video.items[index].statistics.commentCount));
                     });
                 }
             } catch (UnirestException e) {
@@ -126,6 +122,14 @@ public class Requests {
             }
         }
         return comments;
+    }
+
+    private static long getAllComments(ArrayList<Long> comments){
+        long commentsCount = 0;
+        for (int i = 0; i < comments.size(); i++) {
+            commentsCount += comments.get(i);
+        }
+        return commentsCount;
     }
 
 }
